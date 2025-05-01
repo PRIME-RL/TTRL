@@ -58,15 +58,15 @@ def generate_samples_remote(samples_maker, chunk_prompts, rank, world_size, gene
 class TTTController(NaiveController):
     def generate_shared_samples(self, rand_prompts):
         world_size = self.agent.actor_model_group.world_size
-        
+
         if len(rand_prompts) < world_size:
             samples_ref = generate_samples_remote.remote(self.samples_maker, rand_prompts, 0, 1, self.generate_kwargs)
             old_all_results = ray.get(samples_ref)
-            
+
             all_samples = old_all_results["sample"]
             if len(all_samples) % world_size != 0:
                 raise ValueError(f"{len(all_samples)} can not be divied by {world_size}!")
-            
+
             size = len(all_samples) // world_size
             all_samples = [all_samples[i*size:(i+1)*size] for i in range(world_size)]
             assert len(all_samples) == world_size, f"{len(all_samples)} != {world_size}"
@@ -83,7 +83,7 @@ class TTTController(NaiveController):
                     end_idx = min(start_idx + chunk_size, length)
                     sub_slice = data_list[start_idx:end_idx]
                     chunked[i][key] = sub_slice
-            
+
             all_refs = []
             for rank in range(world_size):
                 samples_ref = generate_samples_remote.remote(self.samples_maker, chunked[rank], rank, world_size, self.generate_kwargs)
@@ -112,7 +112,7 @@ class TTTController(NaiveController):
                 sft_samples.extend(self.build_sft_sample_list(shared_data))
 
             shared_data_refs[rank] = shared_ref
-        
+
         # Collect all ttt_metrics on all nodes
         ttt_metrics = []
         for rank in range(world_size):
@@ -128,9 +128,9 @@ class TTTController(NaiveController):
                     total += metric[key]
                 ttt_metrics_avg[key] = total / len(ttt_metrics)
         ttt_metrics = ttt_metrics_avg
-        
+
         print(f"ttt_metrics: {ttt_metrics}")
-        
+
         if len(sft_samples) > 0:
             for sample in random.sample(sft_samples, 3):
                 print(sample)
@@ -144,7 +144,7 @@ class TTTController(NaiveController):
             num_update_steps_per_episodes=1,
         ) -> None:
         args = self.args
-        
+
         num_rollouts_per_episodes = (
             num_update_steps_per_episodes
             * args.train_batch_size
@@ -152,7 +152,7 @@ class TTTController(NaiveController):
             // args.rollout_batch_size
             // args.n_samples_per_prompt
         )
-        
+
         # Restore step and start_epoch
         steps = consumed_samples // args.rollout_batch_size + 1
         start_episode = consumed_samples // args.rollout_batch_size // num_rollouts_per_episodes
