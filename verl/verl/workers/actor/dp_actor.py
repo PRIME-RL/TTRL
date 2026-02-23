@@ -72,6 +72,12 @@ class DataParallelPPOActor(BasePPOActor):
         else:
             entropy_from_logits = verl_F.entropy_from_logits
 
+        self.compute_self_certainty_from_logits = (
+            torch.compile(verl_F.self_certainty_from_logits, dynamic=True)
+            if self.config.get("use_torch_compile", True)  # use torch compile by default
+            else verl_F.self_certainty_from_logits
+        )
+
         self.compute_entropy_from_logits = (
             torch.compile(entropy_from_logits, dynamic=True)
             if self.config.get("use_torch_compile", True)  #  use torch compile by default
@@ -80,12 +86,13 @@ class DataParallelPPOActor(BasePPOActor):
         self.device_name = get_device_name()
 
     def _forward_micro_batch(
-        self, micro_batch, temperature, calculate_entropy=False
-    ) -> Tuple[torch.Tensor, torch.Tensor]:
+        self, micro_batch, temperature, calculate_entropy=False, calculate_self_certainty=False
+    ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         """
         Returns:
             entropy: # (bs, response_len)
             log_probs: # (bs, response_len)
+            self_certainty: # (bs, response_len) or None
         """
         response_length = micro_batch["responses"].size(-1)
         multi_modal_inputs = {}
@@ -104,6 +111,7 @@ class DataParallelPPOActor(BasePPOActor):
             batch_size, seqlen = input_ids.shape
             attention_mask = micro_batch["attention_mask"]
             position_ids = micro_batch["position_ids"]
+            self_certainty = None
             entropy = None
             if position_ids.dim() == 3:  # qwen2vl mrope
                 position_ids = position_ids.transpose(0, 1)  # (bsz, 3, seqlen) -> (3, bsz, seqlen)
@@ -175,6 +183,8 @@ class DataParallelPPOActor(BasePPOActor):
                     **extra_args,
                 )  # prevent model thinks we are generating
 
+                self_certainty_rmpad = None
+
                 if self.use_fused_kernels:
                     log_probs = output.log_probs.squeeze(0)  # (total_nnz,)
                     entropy_rmpad = output.entropy.squeeze(0)  # (total_nnz,)
@@ -202,6 +212,9 @@ class DataParallelPPOActor(BasePPOActor):
                                 self.compute_entropy_from_logits, logits_rmpad
                             )
 
+                    if calculate_self_certainty:
+                        self_certainty_rmpad = self.compute_self_certainty_from_logits(logits_rmpad)
+
                 # gather log_prob if sp > 1
                 if self.use_ulysses_sp:
                     # gather and unpad for the ulysses sp
@@ -218,10 +231,24 @@ class DataParallelPPOActor(BasePPOActor):
                             unpad_dim=0,
                             padding_size=pad_size,
                         )
+                    if calculate_self_certainty and self_certainty_rmpad is not None:
+                        self_certainty_rmpad = gather_outpus_and_unpad(
+                            self_certainty_rmpad,
+                            gather_dim=0,
+                            unpad_dim=0,
+                            padding_size=pad_size,
+                        )
                 # pad back to (bsz, seqlen)
                 if calculate_entropy:
                     full_entropy = pad_input(
                         hidden_states=entropy_rmpad.unsqueeze(-1),
+                        indices=indices,
+                        batch=batch_size,
+                        seqlen=seqlen,
+                    )
+                if calculate_self_certainty and self_certainty_rmpad is not None:
+                    full_self_certainty = pad_input(
+                        hidden_states=self_certainty_rmpad.unsqueeze(-1),
                         indices=indices,
                         batch=batch_size,
                         seqlen=seqlen,
@@ -236,6 +263,8 @@ class DataParallelPPOActor(BasePPOActor):
                 # only return response part:
                 if calculate_entropy:
                     entropy = full_entropy.squeeze(-1)[:, -response_length - 1 : -1]  # (bsz, response_length)
+                if calculate_self_certainty and self_certainty_rmpad is not None:
+                    self_certainty = full_self_certainty.squeeze(-1)[:, -response_length - 1 : -1]
                 log_probs = full_log_probs.squeeze(-1)[:, -response_length - 1 : -1]  # (bsz, response_length)
 
             else:  # not using rmpad and no ulysses sp
@@ -265,8 +294,10 @@ class DataParallelPPOActor(BasePPOActor):
                     log_probs = logprobs_from_logits(logits, micro_batch["responses"])
                     if calculate_entropy:
                         entropy = verl_F.entropy_from_logits(logits)  # (bsz, response_length)
+                    if calculate_self_certainty:
+                        self_certainty = verl_F.self_certainty_from_logits(logits)
 
-            return entropy, log_probs
+            return entropy, log_probs, self_certainty
 
     def _optimizer_step(self):
         assert self.config.grad_clip is not None
@@ -287,7 +318,7 @@ class DataParallelPPOActor(BasePPOActor):
         return grad_norm
 
     @GPUMemoryLogger(role="dp actor", logger=logger)
-    def compute_log_prob(self, data: DataProto, calculate_entropy=False) -> torch.Tensor:
+    def compute_log_prob(self, data: DataProto, calculate_entropy=False, calculate_self_certainty=False) -> torch.Tensor:
         """Compute the log probability of the responses given input_ids, attention_mask and position_ids
 
         Args:
@@ -350,17 +381,24 @@ class DataParallelPPOActor(BasePPOActor):
 
         log_probs_lst = []
         entropy_lst = []
+        self_certainty_lst = []
         for micro_batch in micro_batches:
             if isinstance(micro_batch, DataProto):
                 micro_batch = {**micro_batch.batch, **micro_batch.non_tensor_batch}
             with torch.no_grad():
-                entropy, log_probs = self._forward_micro_batch(
-                    micro_batch, temperature=temperature, calculate_entropy=calculate_entropy
+                entropy, log_probs, self_certainty = self._forward_micro_batch(
+                    micro_batch, temperature=temperature, calculate_entropy=calculate_entropy,
+                    calculate_self_certainty=calculate_self_certainty
                 )
             log_probs_lst.append(log_probs)
             if calculate_entropy:
                 entropy_lst.append(entropy)
+            if calculate_self_certainty and self_certainty is not None:
+                self_certainty_lst.append(self_certainty)
 
+        self_certaintys = None
+        if calculate_self_certainty and self_certainty_lst:
+            self_certaintys = torch.concat(self_certainty_lst, dim=0)
         log_probs = torch.concat(log_probs_lst, dim=0)
         entropys = None
         if calculate_entropy:
@@ -372,8 +410,10 @@ class DataParallelPPOActor(BasePPOActor):
             log_probs = log_probs[revert_indices]
             if calculate_entropy:
                 entropys = entropys[revert_indices]
+            if calculate_self_certainty and self_certaintys is not None and self_certaintys.numel() > 0:
+                self_certaintys = self_certaintys[revert_indices]
 
-        return log_probs, entropys
+        return log_probs, entropys, self_certaintys
 
     @GPUMemoryLogger(role="dp actor", logger=logger)
     def update_policy(self, data: DataProto):
@@ -485,8 +525,9 @@ class DataParallelPPOActor(BasePPOActor):
                     calculate_entropy = False
                     if entropy_coeff != 0:
                         calculate_entropy = True
-                    entropy, log_prob = self._forward_micro_batch(
-                        micro_batch=data, temperature=temperature, calculate_entropy=calculate_entropy
+                    entropy, log_prob, _ = self._forward_micro_batch(
+                        micro_batch=data, temperature=temperature, calculate_entropy=calculate_entropy,
+                        calculate_self_certainty=False
                     )
 
                     loss_mode = self.config.policy_loss.get("loss_mode", "vanilla")

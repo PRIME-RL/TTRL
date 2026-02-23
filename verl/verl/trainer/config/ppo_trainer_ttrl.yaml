@@ -8,10 +8,20 @@ defaults:
 
 ttrl:
   # Whether to enable TTRL, refer to (https://arxiv.org/abs/2504.16084)
-  enable: false
+  enable: False
 
   # Number of rollouts per prompt, used for actual training
   n_samples_per_prompt: ${actor_rollout_ref.rollout.n}
 
   # Number of rollouts per prompt, used for label voting
   n_votes_per_prompt: ${actor_rollout_ref.rollout.n}
+
+unsupervised_reward:
+  # Whether to enable unsupervised reward (extends TTRL with more methods)
+  enable: False
+
+  # The type of unsupervised reward: "ensemble", "certainty" or "external"
+  type: "ensemble"
+
+  # Estimator for certainty reward: "self_certainty", "token_level_entropy", "trajectory_level_entropy", "probability", "majority_voting", "self_verify"
+  estimator: "self_certainty"

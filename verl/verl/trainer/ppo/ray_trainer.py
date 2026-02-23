@@ -1132,6 +1132,7 @@ class RayPPOTrainer:
                 is_last_step = self.global_steps >= self.total_training_steps
 
                 with marked_timer("step", timing_raw):
+                    unsupervised_reward = self.config.get("unsupervised_reward", None)
                     # generate a batch
                     with marked_timer("gen", timing_raw, color="red"):
                         if self.config.get("ttrl", {}).get("enable", False):
@@ -1146,6 +1147,17 @@ class RayPPOTrainer:
                             gen_batch_output = select_top_k_per_prompt(gen_batch_output, self.config.ttrl.n_votes_per_prompt, self.config.ttrl.n_samples_per_prompt)
 
                             assert len(gen_batch_output) == len(batch) * self.config.ttrl.n_samples_per_prompt
+                        elif unsupervised_reward and unsupervised_reward.get("enable", False) and unsupervised_reward.get("type", None) == "ensemble":
+                            from verl.trainer.ppo.ttrl_utils import apply_ttrl_gt as apply_majority_voting_gt
+
+                            gen_batch_output = self.actor_rollout_wg.generate_sequences(gen_batch)
+
+                            n_samples_per_prompt = self.config.actor_rollout_ref.rollout.n
+                            assert len(gen_batch_output) == len(batch) * n_samples_per_prompt
+
+                            batch = apply_majority_voting_gt(batch, gen_batch_output, n=n_samples_per_prompt, tokenizer=self.tokenizer)
+
+                            assert len(gen_batch_output) == len(batch) * n_samples_per_prompt
                         else:
                             if not self.async_rollout_mode:
                                 gen_batch_output = self.actor_rollout_wg.generate_sequences(gen_batch)
@@ -1194,19 +1206,16 @@ class RayPPOTrainer:
                     # compute global_valid tokens
                     batch.meta_info["global_token_num"] = torch.sum(batch.batch["attention_mask"], dim=-1).tolist()
 
-                    with marked_timer("reward", timing_raw, color="yellow"):
-                        # compute reward model score
-                        if self.use_rm:
-                            reward_tensor = self.rm_wg.compute_rm_score(batch)
-                            batch = batch.union(reward_tensor)
-
-                        if self.config.reward_model.launch_reward_fn_async:
-                            future_reward = compute_reward_async.remote(batch, self.config, self.tokenizer)
-                        else:
-                            reward_tensor, reward_extra_infos_dict = compute_reward(batch, self.reward_fn)
-
-                    # recompute old_log_probs
+                    # recompute old_log_probs (moved before reward to make certainty metrics available)
                     with marked_timer("old_log_prob", timing_raw, color="blue"):
+                        # Enable self_certainty calculation when certainty-based unsupervised reward is used
+                        need_self_certainty = (
+                            unsupervised_reward and unsupervised_reward.get("enable", False)
+                            and unsupervised_reward.get("type", None) == "certainty"
+                            and unsupervised_reward.get("estimator", None) == "self_certainty"
+                        )
+                        if need_self_certainty:
+                            batch.meta_info["calculate_self_certainty"] = True
                         old_log_prob = self.actor_rollout_wg.compute_log_prob(batch)
                         entropys = old_log_prob.batch["entropys"]
                         response_masks = batch.batch["response_mask"]
@@ -1214,8 +1223,41 @@ class RayPPOTrainer:
                         entropy_agg = agg_loss(loss_mat=entropys, loss_mask=response_masks, loss_agg_mode=loss_agg_mode)
                         old_log_prob_metrics = {"actor/entropy": entropy_agg.detach().item()}
                         metrics.update(old_log_prob_metrics)
-                        old_log_prob.batch.pop("entropys")
+                        # Keep entropys in batch for certainty-based methods
+                        if not need_self_certainty:
+                            old_log_prob.batch.pop("entropys")
                         batch = batch.union(old_log_prob)
+
+                    with marked_timer("reward", timing_raw, color="yellow"):
+                        # compute reward model score
+                        if self.use_rm:
+                            reward_tensor = self.rm_wg.compute_rm_score(batch)
+                            batch = batch.union(reward_tensor)
+
+                        # Compute certainty-based/self-verify pseudo reward (before rule-based reward)
+                        pseudo_reward_tensor = None
+                        pseudo_reward_extra_infos_dict = None
+                        if unsupervised_reward and unsupervised_reward.get("enable", False):
+                            if unsupervised_reward.get("type", None) == "certainty":
+                                if "response_mask" not in batch.batch.keys():
+                                    batch.batch["response_mask"] = compute_response_mask(batch)
+                                from verl.trainer.ppo.ttrl_utils import compute_certainty_reward
+                                pseudo_reward_tensor, pseudo_reward_extra_infos_dict = compute_certainty_reward(
+                                    batch, unsupervised_reward.get("estimator", None)
+                                )
+
+                            # Compute self-verify reward
+                            if unsupervised_reward.get("type", None) == "external":
+                                if unsupervised_reward.get("estimator", None) == "self_verify":
+                                    from verl.trainer.ppo.ttrl_utils import apply_self_verify
+                                    pseudo_reward_tensor, pseudo_reward_extra_infos_dict = apply_self_verify(
+                                        batch, self.tokenizer, self.actor_rollout_wg, verify_prompt=None
+                                    )
+
+                        if self.config.reward_model.launch_reward_fn_async:
+                            future_reward = compute_reward_async.remote(batch, self.config, self.tokenizer)
+                        else:
+                            reward_tensor, reward_extra_infos_dict = compute_reward(batch, self.reward_fn)
 
                         if "rollout_log_probs" in batch.batch.keys():
                             # TODO: we may want to add diff of probs too.
@@ -1261,7 +1303,19 @@ class RayPPOTrainer:
                         reward_extra_infos_dict: dict[str, list]
                         if self.config.reward_model.launch_reward_fn_async:
                             reward_tensor, reward_extra_infos_dict = ray.get(future_reward)
+
                         batch.batch["token_level_scores"] = reward_tensor
+
+                        # Override token_level_scores with pseudo reward for certainty-based/self-verify methods
+                        if unsupervised_reward and unsupervised_reward.get("enable", False):
+                            if unsupervised_reward.get("type", None) == "certainty" and pseudo_reward_tensor is not None:
+                                batch.batch["token_level_scores"] = pseudo_reward_tensor
+                                if pseudo_reward_extra_infos_dict:
+                                    batch.non_tensor_batch.update({k: np.array(v) for k, v in pseudo_reward_extra_infos_dict.items()})
+                            if unsupervised_reward.get("type", None) == "external" and unsupervised_reward.get("estimator", None) == "self_verify" and pseudo_reward_tensor is not None:
+                                batch.batch["token_level_scores"] = pseudo_reward_tensor
+                                if pseudo_reward_extra_infos_dict:
+                                    batch.non_tensor_batch.update({k: np.array(v) for k, v in pseudo_reward_extra_infos_dict.items()})
 
                         if reward_extra_infos_dict:
                             batch.non_tensor_batch.update({k: np.array(v) for k, v in reward_extra_infos_dict.items()})
@@ -1317,6 +1371,32 @@ class RayPPOTrainer:
                         ttrl_metrics = compute_ttrl_metrics(batch, self.config.ttrl.n_samples_per_prompt)
                         for key, value in ttrl_metrics.items():
                                 metrics.update({f"train/{key}": value})
+
+                    # Compute unsupervised reward metrics
+                    if unsupervised_reward and unsupervised_reward.get("enable", False):
+                        if unsupervised_reward.get("type", None) == "ensemble":
+                            from verl.trainer.ppo.ttrl_utils import apply_original_gt, compute_ttrl_metrics
+                            batch = apply_original_gt(batch)
+                            reward_tensor_original, reward_extra_infos_dict_original = compute_reward(batch, self.reward_fn)
+                            batch.batch["token_level_scores_original"] = reward_tensor_original
+                            n_samples_per_prompt = self.config.actor_rollout_ref.rollout.n
+                            ensemble_metrics = compute_ttrl_metrics(batch, n=n_samples_per_prompt)
+                            for key, value in ensemble_metrics.items():
+                                metrics.update({f"train/ensemble/{key}": value})
+
+                        if unsupervised_reward.get("type", None) == "certainty":
+                            from verl.trainer.ppo.ttrl_utils import compute_certainty_metrics
+                            batch.batch["token_level_scores_original"] = reward_tensor
+                            certainty_metrics = compute_certainty_metrics(batch, self.config.actor_rollout_ref.rollout.n)
+                            for key, value in certainty_metrics.items():
+                                metrics.update({f"train/certainty/{key}": value})
+                        
+                        if unsupervised_reward.get("type", None) == "external" and unsupervised_reward.get("estimator", None) == "self_verify":
+                            from verl.trainer.ppo.ttrl_utils import compute_self_verify_metrics
+                            batch.batch["token_level_scores_original"] = reward_tensor
+                            self_verify_metrics = compute_self_verify_metrics(batch)
+                            for key, value in self_verify_metrics.items():
+                                metrics.update({f"train/self_verify/{key}": value})
 
                     # Log rollout generations if enabled
                     rollout_data_dir = self.config.trainer.get("rollout_data_dir", None)

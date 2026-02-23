@@ -778,12 +778,19 @@ class ActorRolloutRefWorker(Worker, DistProfilerExtension):
         data.meta_info["use_dynamic_bsz"] = self.config.rollout.log_prob_use_dynamic_bsz
         data.meta_info["temperature"] = self.config.rollout.temperature
         # perform recompute log_prob
+        # Enable self_certainty calculation when unsupervised_reward certainty is used
+        calculate_self_certainty = data.meta_info.pop("calculate_self_certainty", False)
         with self.ulysses_sharding_manager:
             data = self.ulysses_sharding_manager.preprocess_data(data)
             with adapter_ctx:
-                output, entropys = self.actor.compute_log_prob(data=data, calculate_entropy=True)
+                output, entropys, self_certaintys = self.actor.compute_log_prob(
+                    data=data, calculate_entropy=True, calculate_self_certainty=calculate_self_certainty
+                )
+            tensors = {"old_log_probs": output, "entropys": entropys}
+            if calculate_self_certainty and self_certaintys is not None:
+                tensors["self_certaintys"] = self_certaintys
             output = DataProto.from_dict(
-                tensors={"old_log_probs": output, "entropys": entropys},
+                tensors=tensors,
                 meta_info={"temperature": self.config.rollout.temperature},
             )
             output = self.ulysses_sharding_manager.postprocess_data(output)
@@ -824,7 +831,7 @@ class ActorRolloutRefWorker(Worker, DistProfilerExtension):
         data.meta_info["use_dynamic_bsz"] = self.config.ref.log_prob_use_dynamic_bsz
         with self.ulysses_sharding_manager:
             data = self.ulysses_sharding_manager.preprocess_data(data)
-            output, _ = self.ref_policy.compute_log_prob(data=data, calculate_entropy=False)
+            output, _, _ = self.ref_policy.compute_log_prob(data=data, calculate_entropy=False, calculate_self_certainty=False)
             output = DataProto.from_dict(tensors={"ref_log_prob": output})
             output = self.ulysses_sharding_manager.postprocess_data(output)
 
