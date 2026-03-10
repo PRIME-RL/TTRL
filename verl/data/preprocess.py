@@ -22,7 +22,7 @@ def make_map_fn(split, source=None):
                     }
                 ],
                 "ability": "math",
-                "reward_model": {"style": "rule", "ground_truth": solution},
+                "reward_model": {"style": "rule", "ground_truth": str(solution)},
                 "extra_info": {
                     "split": split,
                     "index": f"{data_source}-{idx}",
@@ -34,7 +34,7 @@ def make_map_fn(split, source=None):
 
 if __name__ == '__main__':
 
-    data_sources = ['DAPO', 'AIME-TTT', 'AIME25-TTT', 'AMC-TTT']
+    data_sources = ['DAPO', 'AIME-TTT', 'AIME25-TTT', 'AMC-TTT', 'MATH-TTT']
 
     for data_source in data_sources:
         train_path = os.path.join(data_source, 'train.json')

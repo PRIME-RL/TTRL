@@ -24,6 +24,7 @@
 > Welcome to the Era of Experience.  --David Silver, Richard S. Sutton
 
 # 🎉News
+- **[2026-03-10]** We investigate the mechanisms and potential applications of [Unsupervised RLVR (URLVR)](https://arxiv.org/pdf/2603.08660), and find that it is particularly well suited for test-time training and quantifying model priors. Here is [code](https://github.com/PRIME-RL/TTRL/tree/urlvr-dev). URLVR paper is accepted to [ICLR 2026](https://iclr.cc/Conferences/2026)!
 - **[2025-09-18]** TTRL paper is accepted to [NeurIPS 2025](https://neurips.cc/Conferences/2025)!
 - **[2025-08-17]** We bump into [verl v0.4.1](https://github.com/volcengine/verl/releases/tag/v0.4.1), and now you can enable TTRL by simply setting `+ttrl.enable=True`!
 - **[2025-05-23]** We update both the paper and the code, with the implementation based on the [verl](https://github.com/volcengine/verl).
