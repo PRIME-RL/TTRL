@@ -157,7 +157,6 @@ unsupervised_reward:
 - All experiments were conducted on 8 x NVIDIA A800 80GB GPUs
 - The code automatically handles the correct order of reward and log probability computation for each method
 - TTRL and URLVR methods can be used independently. They are properly separated in the codebase
-
 - For data preprocessing, use `verl/data/preprocess.py` to convert JSON to Parquet format
 
 # 📨Contact
