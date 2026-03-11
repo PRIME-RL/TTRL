@@ -67,7 +67,7 @@ We propose the **Model Collapse Step** as a novel indicator of model priors, whi
 Intrinsic rewards are fundamentally bounded by what the model already knows. External rewards grounded in unlabeled data or generation-verification asymmetry provide signals that scale with data and computation rather than saturating with model capacity, offering a more promising path towards scalable URLVR.
 
 <p align="center">
-   <img src="figs/self-verification.PNG" alt="Test-time training results" style="width: 85%;">
+   <img src="figs/self-verification.png" alt="Test-time training results" style="width: 85%;">
 </p>
 
 # ✨Getting Started
