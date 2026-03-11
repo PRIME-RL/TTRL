@@ -1,17 +1,15 @@
 <div align="center">
 
-# TTRL: Test-Time Reinforcement Learning
+# How Far Can Unsupervised RLVR Scale LLM Training?
 
-[![Paper](https://img.shields.io/badge/paper-A42C25?style=for-the-badge&logo=arxiv&logoColor=white)](https://arxiv.org/abs/2504.16084)  [![Github](https://img.shields.io/badge/TTRL-000000?style=for-the-badge&logo=github&logoColor=000&logoColor=white)](https://github.com/PRIME-RL/TTRL)
-[![Wandb Log of AIME](https://img.shields.io/badge/Wandb%20Log%20of%20AIME-%2300B4AB?style=for-the-badge&logo=weightsandbiases&logoColor=white&labelColor=000000)](https://wandb.ai/truman-yx-zuo-nlp/TTRL/workspace?nw=nwusertrumanyxzuo) [![HF Papers](https://img.shields.io/badge/HF--Paper-%23FFD14D?style=for-the-badge&logo=huggingface&logoColor=black)](https://huggingface.co/papers/2504.16084)  [![Twitter](https://img.shields.io/badge/Twitter-%23000000.svg?style=for-the-badge&logo=x&logoColor=white)](https://x.com/zuo_yuxin/status/1915406839669572036)
+[![Paper](https://img.shields.io/badge/paper-A42C25?style=for-the-badge&logo=arxiv&logoColor=white)](https://arxiv.org/abs/2603.08660)  [![Github](https://img.shields.io/badge/Code-000000?style=for-the-badge&logo=github&logoColor=white)](https://github.com/PRIME-RL/TTRL/tree/urlvr-dev)  [![HF Papers](https://img.shields.io/badge/HF--Paper-%23FFD14D?style=for-the-badge&logo=huggingface&logoColor=black)](https://huggingface.co/papers/2603.08660)  [![Twitter](https://img.shields.io/badge/Twitter-%23000000.svg?style=for-the-badge&logo=x&logoColor=white)](https://x.com/HBX_hbx/status/2031406636930338828)
 
 </div>
 
 <div align="center" style="font-family: Arial, sans-serif;">
   <p>
-    <a href="#news" style="text-decoration: none; font-weight: bold;">🎉 News</a> •
     <a href="#introduction" style="text-decoration: none; font-weight: bold;">📖 Introduction</a> •
-    <a href="#main-results" style="text-decoration: none; font-weight: bold;">📊 Main Results</a>
+    <a href="#key-findings" style="text-decoration: none; font-weight: bold;">🔍 Key Findings</a>
   </p>
   <p>
     <a href="#getting-started" style="text-decoration: none; font-weight: bold;">✨ Getting Started</a> •
@@ -21,102 +19,173 @@
   </p>
 </div>
 
-> Welcome to the Era of Experience.  --David Silver, Richard S. Sutton
+We investigate the mechanisms and potential applications of [Unsupervised RLVR (URLVR)](https://arxiv.org/pdf/2603.08660), and find that it is particularly well suited for test-time training and quantifying model priors. URLVR paper is accepted to [ICLR 2026](https://iclr.cc/Conferences/2026)!
 
-# 🎉News
-- **[2026-03-10]** We investigate the mechanisms and potential applications of [Unsupervised RLVR (URLVR)](https://arxiv.org/pdf/2603.08660), and find that it is particularly well suited for test-time training and quantifying model priors. Here is [code](https://github.com/PRIME-RL/TTRL/tree/urlvr-dev). URLVR paper is accepted to [ICLR 2026](https://iclr.cc/Conferences/2026)!
-- **[2025-09-18]** TTRL paper is accepted to [NeurIPS 2025](https://neurips.cc/Conferences/2025)!
-- **[2025-08-17]** We bump into [verl v0.4.1](https://github.com/volcengine/verl/releases/tag/v0.4.1), and now you can enable TTRL by simply setting `+ttrl.enable=True`!
-- **[2025-05-23]** We update both the paper and the code, with the implementation based on the [verl](https://github.com/volcengine/verl).
-- **[2025-04-24]** We release the code and experimental logs. Check it out: [Getting Started](#getting-started).
-- **[2025-04-23]** We present **TTRL** (Test-Time Reinforcement Learning), an open-source solution for online RL on data without ground-truth labels, especially test data.
+# 📖 Introduction
 
-# 📖Introduction
+**Can LLMs truly improve without human supervision? We provide the first systematic answer.**
 
-**We investigate Reinforcement Learning (RL) on data without explicit labels for reasoning tasks in Large Language Models (LLMs).**
-The core challenge of the problem is reward estimation during inference while not having access to ground-truth information. While this setting appears elusive, we find that common practices in Test-Time Scaling (TTS), such as majority voting, yield surprisingly effective rewards suitable for driving RL training.
+Reinforcement learning with verifiable rewards (RLVR) has driven recent breakthroughs in LLM reasoning, but scaling supervision is costly and increasingly infeasible as models approach human-level expertise.
+
+**Unsupervised RLVR (URLVR)** promises a solution that derive rewards without ground truth labels, just as pretraining scaled intelligence on unlabeled data. Recent works have explored using intrinsic model signals (majority voting, entropy, self-consistency) as rewards for unsupervised reinforcement learning. While showing promising early gains, their scalability limits remain unclear.
 
 <p align="center">
-   <img src="figs/teaser.png" alt="Performance and settings of TTRL." style="width: 80%;">
+   <img src="figs/framework.png" alt="Overview of URLVR taxonomy and findings." style="width: 85%;">
 </p>
 
 
-<p align="center">
-   <img src="figs/overview.png" alt="Overview of TTRL." style="width: 80%;">
-</p>
+# 🔍 Key Findings
 
+## When Does Intrinsic URLVR Work?
 
-# 📊Main Results
-
-Our experiments demonstrate that TTRL consistently improves performance across a variety of tasks and models. Notably, TTRL boosts the `pass@1` performance of Qwen-2.5-Math-7B by approximately 211% on `AIME 2024` with only unlabeled test data.
-
-Furthermore, although TTRL is only supervised by the `maj@n` metric, TTRL has demonstrated performance to consistently surpass this upper limit of the initial model, and approach the performance of models trained directly on test data with ground-truth labels.
+Intrinsic URLVR universally follows a **rise-then-fall** pattern across all methods. Early gains reflect **confidence-correctness alignment** in the model's prior, while eventual collapse is inevitable when this alignment breaks down.
 
 <p align="center">
-   <img src="figs/results.png" alt="Main results of TTRL." style="width: 60%;">
+   <img src="figs/rise-then-fall.PNG" alt="Rise-then-fall pattern" style="width: 40%;">
+   <img src="figs/per-problem.PNG" alt="Per-problem sharpening" style="width: 50%;">
 </p>
 
+## How Can Sharpening from Intrinsic URLVR Be Applied Safely?
 
-# ✨Getting Started
+Small datasets induce localized rather than systematic policy shift, even training on wrong problems can yield gains, making **test-time training** a safe and practical application.
 
-## Env Setup
+<p align="center">
+   <img src="figs/ttt.PNG" alt="Test-time training results" style="width: 40%;">
+   <img src="figs/kl_loss.PNG" alt="KL divergence for different subsets" style="width: 50%;">
+</p>
+
+## How Can We Measure Model Prior?
+
+We propose the **Model Collapse Step** as a novel indicator of model priors, which measures standard RL trainability by tracking reward accuracy collapses during intrinsic URLVR. This indicator **achieves accuracy in assessing trainability on par with running standard RL itself**, but with higher efficiency (5.6x faster); it **outperforms pass@k**, requires no ground-truth labels and remains robust to multiple-choice problems.
+
+<p align="center">
+   <img src="figs/model_prior.PNG" alt="Test-time training results" style="width: 85%;">
+</p>
+
+## The real scalable direction: external rewards
+
+Intrinsic rewards are fundamentally bounded by what the model already knows. External rewards grounded in unlabeled data or generation-verification asymmetry provide signals that scale with data and computation rather than saturating with model capacity, offering a more promising path towards scalable URLVR.
+
+<p align="center">
+   <img src="figs/self-verification.PNG" alt="Test-time training results" style="width: 85%;">
+</p>
+
+# ✨ Getting Started
+
+URLVR extends TTRL with additional unsupervised reward mechanisms for reinforcement learning without ground-truth labels. The implementation supports three main approaches:
+
+- **Ensemble-based:** Majority voting (similar to TTRL's core method)
+- **Certainty-based:** Rewards derived from model's internal certainty metrics, including self_certainty, token_level_entropy, trajectory_level_entropy and probability methods.
+- **Self-verification:** Model-based verification of generated solutions
+
+## Environment Setup
 
 ```bash
-git clone https://github.com/PRIME-RL/TTRL.git
-
+git clone -b urlvr-dev https://github.com/PRIME-RL/TTRL
 cd TTRL/verl
 
-conda create -n ttrl python==3.10
-conda activate ttrl
+conda create -n urlvr python==3.10
+conda activate urlvr
 bash scripts/install_ttrl_deps.sh
 pip install -e .
 ```
 
-## Reproduce TTRL
-You can reproduce the results on `AIME 2024` with the following commands:
+## Running URLVR Methods
+
+All URLVR scripts are located in `verl/examples/unsupervised_rlvr`. Before running, update the following in each script:
+
+1. Set your model path: `export ACTOR_MODEL_PATH=path/to/your/model`
+2. Set the project path: `export PROJECT_PATH=path/to/TTRL/verl`
+3. Set your WandB API key: `export WANDB_API_KEY=<wandb_api_key>`
+
+### Ensemble-based (Majority Voting)
 
 ```bash
-bash examples/ttrl/Qwen2.5/aime.sh
+bash examples/unsupervised_rlvr/ensemble-based.sh
 ```
 
-> [!NOTE]
-> - You can use the script [verl/data/preprocess.py](https://github.com/PRIME-RL/TTRL/blob/main/verl/data/preprocess.py) to convert data from the `JSON` format to the `Parquet` format for training with verl.
-> - We provide scripts in the [verl/examples/ttrl](https://github.com/PRIME-RL/TTRL/tree/main/verl/examples/ttrl) directory for running TTRL on multiple models across various benchmarks.
-> - For further details regarding the code, please refer to the [verl documentation](https://verl.readthedocs.io/en/latest/index.html).
+This method uses majority voting to generate ground truth labels, similar to TTRL's core approach.
 
-We additionally conducted three independent runs using the preview version of our code. Two of the runs achieved a pass@1 (greedy) of 43.3, while one run reached 46.7. Please refer to the [Weights & Biases logs](https://wandb.ai/truman-yx-zuo-nlp/TTRL/workspace).
+### Certainty-based
 
-*All experiments were conducted on 8 x NVIDIA A100 80GB GPUs.*
+```bash
+bash examples/unsupervised_rlvr/certainty-based.sh
+```
 
-<details>
-<summary>
-  Pseudo-Code
-</summary>
+This method computes rewards based on model certainty metrics. You can configure the estimator type:
+- `self_certainty`: Self-certainty scores from logits
+- `token_level_entropy`: Token-level entropy
+- `trajectory_level_entropy`: Trajectory-level entropy
+- `probability`: Probability-based metrics
 
-The implementation of TTRL can be achieved rapidly by simply modifying the reward function. Please refer to the following code snippet for details:
+Modify the `REWARD_TYPE` environment variable in the script to change the estimator.
 
-<p align="center">
-   <img src="figs/ttrl_reward.png" alt="The pseudo-code of the majority voting reward function." style="width: 60%;">
-</p>
-</details>
+### Self-verify
 
-# 📨Contact
+```bash
+bash examples/unsupervised_rlvr/self-verify.sh
+```
 
-- Kaiyan Zhang: zhang-ky22@mails.tsinghua.edu.cn
+This method uses the model itself to verify generated solutions and assign rewards.
+
+### Ground Truth Baseline
+
+```bash
+bash examples/unsupervised_rlvr/gt.sh
+```
+
+Baseline using ground truth labels (for comparison).
+
+## Configuration
+
+URLVR methods are configured through the `ppo_trainer_ttrl.yaml` config file. Key parameters:
+
+```yaml
+unsupervised_reward:
+  # Whether to enable unsupervised reward (extends TTRL with more methods)
+  enable: False
+
+  # The type of unsupervised reward: "ensemble", "certainty" or "external"
+  type: "ensemble"
+
+  # Estimator for certainty reward: "self_certainty", "token_level_entropy", "trajectory_level_entropy", "probability", "majority_voting", "self_verify"
+  estimator: "majority_voting"
+```
+
+## Notes
+
+- All experiments were conducted on 8 x NVIDIA A800 80GB GPUs
+- The code automatically handles the correct order of reward and log probability computation for each method
+- TTRL and URLVR methods can be used independently. They are properly separated in the codebase
+
+- For data preprocessing, use `verl/data/preprocess.py` to convert JSON to Parquet format
+
+# 📨 Contact
+
+- Bingxiang He: hebx24@mails.tsinghua.edu.cn
 - Ning Ding: dingning@mail.tsinghua.edu.cn
 
-# 🎈Citation
-If you find TTRL helpful, please cite us.
+# 🎈 Citation
 
+If you find URLVR helpful, please cite:
 ```bibtex
-@article{zuo2025ttrl,
-  title={Ttrl: Test-time reinforcement learning},
-  author={Zuo, Yuxin and Zhang, Kaiyan and Sheng, Li and Qu, Shang and Cui, Ganqu and Zhu, Xuekai and Li, Haozhan and Zhang, Yuchen and Long, Xinwei and Hua, Ermo and others},
-  journal={arXiv preprint arXiv:2504.16084},
-  year={2025}
+@misc{he2026farunsupervisedrlvrscale,
+      title={How Far Can Unsupervised RLVR Scale LLM Training?}, 
+      author={Bingxiang He and Yuxin Zuo and Zeyuan Liu and Shangziqi Zhao and Zixuan Fu and Junlin Yang and Cheng Qian and Kaiyan Zhang and Yuchen Fan and Ganqu Cui and Xiusi Chen and Youbang Sun and Xingtai Lv and Xuekai Zhu and Li Sheng and Ran Li and Huan-ang Gao and Yuchen Zhang and Bowen Zhou and Zhiyuan Liu and Ning Ding},
+      year={2026},
+      eprint={2603.08660},
+      archivePrefix={arXiv},
+      primaryClass={cs.LG},
+      url={https://arxiv.org/abs/2603.08660}, 
 }
 ```
 
-# 🌟Star History
+# 🌟 Star History
 
 [![Star History Chart](https://api.star-history.com/svg?repos=PRIME-RL/TTRL&type=Date)](https://www.star-history.com/#PRIME-RL/TTRL&Date)
+
+---
+
+<div align="center">
+<b>Understanding the boundaries of unsupervised RLVR is the first step toward transcending them.</b>
+</div>
