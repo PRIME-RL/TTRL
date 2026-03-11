@@ -21,7 +21,7 @@
 
 We investigate the mechanisms and potential applications of [Unsupervised RLVR (URLVR)](https://arxiv.org/pdf/2603.08660), and find that it is particularly well suited for test-time training and quantifying model priors. URLVR paper is accepted to [ICLR 2026](https://iclr.cc/Conferences/2026)!
 
-# 📖 Introduction
+# 📖Introduction
 
 **Can LLMs truly improve without human supervision? We provide the first systematic answer.**
 
@@ -34,7 +34,7 @@ Reinforcement learning with verifiable rewards (RLVR) has driven recent breakthr
 </p>
 
 
-# 🔍 Key Findings
+# 🔍Key Findings
 
 ## When Does Intrinsic URLVR Work?
 
@@ -70,7 +70,7 @@ Intrinsic rewards are fundamentally bounded by what the model already knows. Ext
    <img src="figs/self-verification.PNG" alt="Test-time training results" style="width: 85%;">
 </p>
 
-# ✨ Getting Started
+# ✨Getting Started
 
 URLVR extends TTRL with additional unsupervised reward mechanisms for reinforcement learning without ground-truth labels. The implementation supports three main approaches:
 
@@ -160,12 +160,12 @@ unsupervised_reward:
 
 - For data preprocessing, use `verl/data/preprocess.py` to convert JSON to Parquet format
 
-# 📨 Contact
+# 📨Contact
 
 - Bingxiang He: hebx24@mails.tsinghua.edu.cn
 - Ning Ding: dingning@mail.tsinghua.edu.cn
 
-# 🎈 Citation
+# 🎈Citation
 
 If you find URLVR helpful, please cite:
 ```bibtex
@@ -180,7 +180,7 @@ If you find URLVR helpful, please cite:
 }
 ```
 
-# 🌟 Star History
+# 🌟Star History
 
 [![Star History Chart](https://api.star-history.com/svg?repos=PRIME-RL/TTRL&type=Date)](https://www.star-history.com/#PRIME-RL/TTRL&Date)
 
