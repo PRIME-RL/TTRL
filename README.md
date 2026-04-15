@@ -168,14 +168,11 @@ unsupervised_reward:
 
 If you find URLVR helpful, please cite:
 ```bibtex
-@misc{he2026farunsupervisedrlvrscale,
-      title={How Far Can Unsupervised RLVR Scale LLM Training?}, 
-      author={Bingxiang He and Yuxin Zuo and Zeyuan Liu and Shangziqi Zhao and Zixuan Fu and Junlin Yang and Cheng Qian and Kaiyan Zhang and Yuchen Fan and Ganqu Cui and Xiusi Chen and Youbang Sun and Xingtai Lv and Xuekai Zhu and Li Sheng and Ran Li and Huan-ang Gao and Yuchen Zhang and Bowen Zhou and Zhiyuan Liu and Ning Ding},
-      year={2026},
-      eprint={2603.08660},
-      archivePrefix={arXiv},
-      primaryClass={cs.LG},
-      url={https://arxiv.org/abs/2603.08660}, 
+@article{he2026far,
+  title={How Far Can Unsupervised RLVR Scale LLM Training?},
+  author={He, Bingxiang and Zuo, Yuxin and Liu, Zeyuan and Zhao, Shangziqi and Fu, Zixuan and Yang, Junlin and Qian, Cheng and Zhang, Kaiyan and Fan, Yuchen and Cui, Ganqu and others},
+  journal={arXiv preprint arXiv:2603.08660},
+  year={2026}
 }
 ```
 
